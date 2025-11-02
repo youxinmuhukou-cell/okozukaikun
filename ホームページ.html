@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>お小遣い管理システム</title>
+<style>
+  body {
+    font-family: "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+    background-color: #f4f9ff;
+    color: #222;
+    margin: 0;
+    padding: 0;
+  }
+  header {
+    background-color: #3a7bd5;
+    color: white;
+    padding: 15px;
+    text-align: center;
+  }
+  main {
+    padding: 15px;
+    max-width: 750px;
+    margin: 0 auto;
+    background-color: #fff;
+    border-radius: 8px;
+    box-shadow: 0 0 10px #ccc;
+  }
+  h2 {
+    border-bottom: 2px solid #3a7bd5;
+    padding-bottom: 4px;
+    font-size: 1.2em;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 10px 0;
+    font-size: 0.95em;
+  }
+  th, td {
+    border: 1px solid #ccc;
+    padding: 8px;
+  }
+  th {
+    background-color: #e8f0ff;
+  }
+  button {
+    background-color: #3a7bd5;
+    color: white;
+    border: none;
+    padding: 10px 15px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1em;
+  }
+  button:hover {
+    background-color: #2c6ccf;
+  }
+  input {
+    padding: 8px;
+    font-size: 1em;
+    margin: 4px 0;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .danger {
+    background-color: #c33;
+  }
+  #adminSection {
+    display: none;
+  }
+  #log {
+    background: #f7faff;
+    padding: 10px;
+    border-radius: 4px;
+    min-height: 50px;
+    word-wrap: break-word;
+  }
+  #today {
+    font-size: 0.9em;
+    opacity: 0.9;
+  }
+  @media (max-width: 600px) {
+    table, th, td {
+      font-size: 0.9em;
+    }
+    main {
+      padding: 10px;
+    }
+    button {
+      width: 100%;
+      margin-top: 5px;
+    }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>お小遣い管理システム</h1>
+  <div id="today"></div>
+</header>
+
+<main>
+  <section id="childSection">
+    <h2>申請モード（子ども用）</h2>
+    <table>
+      <tr><th>内容</th><th>金額</th><th>操作</th></tr>
+      <tr><td>風呂掃除（普通）</td><td>15円</td><td><button onclick="requestAllowance('風呂掃除（普通）', 15)">申請</button></td></tr>
+      <tr><td>風呂掃除（ピカピカ）</td><td>20円</td><td><button onclick="requestAllowance('風呂掃除（ピカピカ）', 20)">申請</button></td></tr>
+      <tr><td>国語テスト満点（算数・小テスト以外）</td><td>100円</td><td><button onclick="requestAllowance('国語テスト満点', 100)">申請</button></td></tr>
+    </table>
+
+    <h3>その他臨時報酬</h3>
+    <input type="text" id="customTask" placeholder="内容を入力">
+    <input type="number" id="customAmount" placeholder="金額（円）">
+    <button onclick="addCustom()">申請</button>
+
+    <h3>データリセット同意</h3>
+    <button onclick="childAgreeReset()">削除に同意する</button>
+    <div id="childResetStatus">未同意</div>
+  </section>
+
+  <hr style="margin:25px 0;">
+
+  <section id="loginArea">
+    <h2>保護者モード</h2>
+    <input type="password" id="adminPass" placeholder="パスワードを入力">
+    <button onclick="login()">ログイン</button>
+    <div id="loginMsg"></div>
+  </section>
+
+  <section id="adminSection">
+    <h2>承認と履歴</h2>
+    <div id="requests"></div>
+
+    <h3>承認履歴</h3>
+    <div id="log">（まだ履歴がありません）</div>
+
+    <h3>月ごとの合計</h3>
+    <div id="summary"></div>
+
+    <h3>パスワード管理</h3>
+    <input type="password" id="oldPass" placeholder="現在のパスワード">
+    <input type="password" id="newPass" placeholder="新しいパスワード">
+    <button onclick="changePassword()">パスワード変更</button>
+    <div id="pwChangeMsg"></div>
+
+    <button class="danger" onclick="resetAll()" style="margin-top:10px;">全データ消去</button>
+    <div id="resetStatus"></div>
+
+    <button onclick="logout()" style="margin-top:10px; background:#777;">ログアウト</button>
+  </section>
+</main>
+
+<script>
+  // === 日付 ===
+  const today = new Date();
+  document.getElementById("today").textContent =
+    today.toLocaleDateString("ja-JP", {year:"numeric", month:"long", day:"numeric"});
+
+  // === データ ===
+  let pending = JSON.parse(localStorage.getItem("pending") || "[]");
+  let logs = JSON.parse(localStorage.getItem("logs") || "[]");
+  let childAgreed = JSON.parse(localStorage.getItem("childAgreed") || "false");
+  let PASSWORD = localStorage.getItem("parentPassword") || "3622";
+
+  // === 子ども側 ===
+  function requestAllowance(task, amount) {
+    const entry = {task, amount, date: new Date().toLocaleDateString("ja-JP")};
+    pending.push(entry);
+    localStorage.setItem("pending", JSON.stringify(pending));
+    alert("申請を送りました。");
+    showRequests();
+  }
+
+  function addCustom() {
+    const task = document.getElementById("customTask").value.trim();
+    const amount = parseInt(document.getElementById("customAmount").value);
+    if (!task || isNaN(amount)) {
+      alert("内容と金額を入力してください。");
+      return;
+    }
+    requestAllowance(task, amount);
+    document.getElementById("customTask").value = "";
+    document.getElementById("customAmount").value = "";
+  }
+
+  function childAgreeReset() {
+    childAgreed = true;
+    localStorage.setItem("childAgreed", "true");
+    document.getElementById("childResetStatus").textContent = "同意済み";
+    alert("削除への同意を記録しました。保護者が確認してください。");
+  }
+
+  // === 保護者側 ===
+  function login() {
+    const pass = document.getElementById("adminPass").value;
+    if (pass === PASSWORD) {
+      document.getElementById("adminSection").style.display = "block";
+      document.getElementById("loginMsg").textContent = "";
+      showRequests();
+      updateLog();
+      updateSummary();
+    } else {
+      document.getElementById("loginMsg").textContent = "パスワードが違います。";
+    }
+  }
+
+  function logout() {
+    document.getElementById("adminSection").style.display = "none";
+  }
+
+  function approve(i) {
+    const entry = pending[i];
+    pending.splice(i, 1);
+    localStorage.setItem("pending", JSON.stringify(pending));
+    logs.push({...entry, approved:true});
+    localStorage.setItem("logs", JSON.stringify(logs));
+    showRequests();
+    updateLog();
+    updateSummary();
+  }
+
+  function changePassword() {
+    const oldPass = document.getElementById("oldPass").value;
+    const newPass = document.getElementById("newPass").value;
+    if (oldPass !== PASSWORD) {
+      document.getElementById("pwChangeMsg").textContent = "現在のパスワードが違います。";
+      return;
+    }
+    if (newPass.trim().length < 4) {
+      document.getElementById("pwChangeMsg").textContent = "4文字以上の新パスワードを入力してください。";
+      return;
+    }
+    PASSWORD = newPass;
+    localStorage.setItem("parentPassword", newPass);
+    document.getElementById("pwChangeMsg").textContent = "パスワードを変更しました。";
+  }
+
+  function resetAll() {
+    if (!childAgreed) {
+      alert("子どもの同意が必要です。");
+      return;
+    }
+    if (confirm("本当に全データを削除しますか？（子ども同意済み）")) {
+      localStorage.clear();
+      pending = [];
+      logs = [];
+      childAgreed = false;
+      PASSWORD = "3622";
+      document.getElementById("childResetStatus").textContent = "未同意";
+      document.getElementById("resetStatus").textContent = "全データを削除しました。";
+      showRequests();
+      updateLog();
+      updateSummary();
+      alert("データを完全に消去しました。");
+    }
+  }
+
+  // === 表示更新 ===
+  function showRequests() {
+    const div = document.getElementById("requests");
+    if (pending.length === 0) {
+      div.textContent = "（現在、申請はありません）";
+      return;
+    }
+    div.innerHTML = pending.map((p, i) =>
+      `${p.date}：${p.task}（${p.amount}円） <button onclick="approve(${i})">承認</button>`
+    ).join("<br>");
+  }
+
+  function updateLog() {
+    const div = document.getElementById("log");
+    if (logs.length === 0) {
+      div.textContent = "（まだ履歴がありません）";
+      return;
+    }
+    div.innerHTML = logs.map(l => `${l.date}　${l.task}　${l.amount}円`).join("<br>");
+  }
+
+  function updateSummary() {
+    const div = document.getElementById("summary");
+    const monthly = {};
+    logs.forEach(l => {
+      const [y, m] = l.date.split("/");
+      const key = `${y}-${m}`;
+      monthly[key] = (monthly[key] || 0) + l.amount;
+    });
+    div.innerHTML = Object.entries(monthly)
+      .map(([k, v]) => `${k}：${v}円`)
+      .join("<br>");
+  }
+
+  // === 初期化 ===
+  if (childAgreed) document.getElementById("childResetStatus").textContent = "同意済み";
+  showRequests();
+  updateLog();
+  updateSummary();
+</script>
+</body>
+</html>
